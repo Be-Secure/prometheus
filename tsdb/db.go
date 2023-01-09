@@ -66,7 +66,7 @@ const (
 // ErrNotReady is returned if the underlying storage is not ready yet.
 var ErrNotReady = errors.New("TSDB not ready")
 
-// DefaultOptions used for the DB. They are sane for setups using
+// DefaultOptions used for the DB. They are reasonable for setups using
 // millisecond precision timestamps.
 func DefaultOptions() *Options {
 	return &Options{
@@ -81,6 +81,7 @@ func DefaultOptions() *Options {
 		StripeSize:                 DefaultStripeSize,
 		HeadChunksWriteBufferSize:  chunks.DefaultWriteBufferSize,
 		IsolationDisabled:          defaultIsolationDisabled,
+		HeadChunksWriteQueueSize:   chunks.DefaultWriteQueueSize,
 		OutOfOrderCapMax:           DefaultOutOfOrderCapMax,
 	}
 }
@@ -165,6 +166,9 @@ type Options struct {
 
 	// Disables isolation between reads and in-flight appends.
 	IsolationDisabled bool
+
+	// EnableNativeHistograms enables the ingestion of native histograms.
+	EnableNativeHistograms bool
 
 	// OutOfOrderTimeWindow specifies how much out of order is allowed, if any.
 	// This can change during run-time, so this value from here should only be used
@@ -775,6 +779,7 @@ func open(dir string, l log.Logger, r prometheus.Registerer, opts *Options, rngs
 	headOpts.EnableExemplarStorage = opts.EnableExemplarStorage
 	headOpts.MaxExemplars.Store(opts.MaxExemplars)
 	headOpts.EnableMemorySnapshotOnShutdown = opts.EnableMemorySnapshotOnShutdown
+	headOpts.EnableNativeHistograms.Store(opts.EnableNativeHistograms)
 	headOpts.OutOfOrderTimeWindow.Store(opts.OutOfOrderTimeWindow)
 	headOpts.OutOfOrderCapMax.Store(opts.OutOfOrderCapMax)
 	if opts.IsolationDisabled {
@@ -974,6 +979,16 @@ func (db *DB) ApplyConfig(conf *config.Config) error {
 	return nil
 }
 
+// EnableNativeHistograms enables the native histogram feature.
+func (db *DB) EnableNativeHistograms() {
+	db.head.EnableNativeHistograms()
+}
+
+// DisableNativeHistograms disables the native histogram feature.
+func (db *DB) DisableNativeHistograms() {
+	db.head.DisableNativeHistograms()
+}
+
 // dbAppender wraps the DB's head appender and triggers compactions on commit
 // if necessary.
 type dbAppender struct {
@@ -983,11 +998,11 @@ type dbAppender struct {
 
 var _ storage.GetRef = dbAppender{}
 
-func (a dbAppender) GetRef(lset labels.Labels) (storage.SeriesRef, labels.Labels) {
+func (a dbAppender) GetRef(lset labels.Labels, hash uint64) (storage.SeriesRef, labels.Labels) {
 	if g, ok := a.Appender.(storage.GetRef); ok {
-		return g.GetRef(lset)
+		return g.GetRef(lset, hash)
 	}
-	return 0, nil
+	return 0, labels.EmptyLabels()
 }
 
 func (a dbAppender) Commit() error {
@@ -1939,7 +1954,9 @@ func (db *DB) CleanTombstones() (err error) {
 	defer db.cmtx.Unlock()
 
 	start := time.Now()
-	defer db.metrics.tombCleanTimer.Observe(time.Since(start).Seconds())
+	defer func() {
+		db.metrics.tombCleanTimer.Observe(time.Since(start).Seconds())
+	}()
 
 	cleanUpCompleted := false
 	// Repeat cleanup until there is no tombstones left.
