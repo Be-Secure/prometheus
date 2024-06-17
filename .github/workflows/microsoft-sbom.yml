@@ -28,7 +28,7 @@ jobs:
         $RUNNER_TEMP/sbom-tool generate -b SBOMOUTPUT/ -bc . -pn ${{ github.repository }} -pv v2.49.1 -ps wipro -nsb https://github.com/prometheus/prometheus
     
     - name: Upload SBOM artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: sbom
         path: SBOMOUTPUT/_manifest/spdx_2.2/manifest.spdx.json
