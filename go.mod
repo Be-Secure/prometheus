@@ -9,7 +9,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v2 v2.2.1
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/alecthomas/units v0.0.0-20231202071711-9a357b53e9c9
-	github.com/aws/aws-sdk-go v1.48.14
+	github.com/aws/aws-sdk-go v1.55.5
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/dennwc/varint v1.0.0
 	github.com/digitalocean/godo v1.106.0
